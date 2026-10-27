@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>🎵 Playlist Downloader</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 640px;
+            margin: 3rem auto;
+            padding: 0 1rem;
+            background: #0f172a;
+            color: #e2e8f0;
+        }
+        h1 { color: #38bdf8; }
+        input, button {
+            font-size: 1rem;
+            padding: 0.7rem;
+            border-radius: 8px;
+            border: 1px solid #334155;
+            background: #1e293b;
+            color: #e2e8f0;
+        }
+        #urlInput { width: 100%; box-sizing: border-box; margin-bottom: 1rem; }
+        button {
+            background: #38bdf8;
+            color: #0f172a;
+            font-weight: bold;
+            cursor: pointer;
+            border: none;
+        }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        #status { margin-top: 1.5rem; font-weight: 600; }
+        #downloadLink {
+            display: none;
+            margin-top: 1rem;
+            padding: 0.75rem;
+            background: #22c55e;
+            color: #0f172a;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: bold;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎵 YouTube Playlist Downloader</h1>
+    <p>Paste a YouTube or YouTube Music playlist link below.</p>
+
+    <input type="text" id="urlInput"
+           placeholder="https://music.youtube.com/playlist?list=..." />
+    <button id="downloadBtn">Download Playlist</button>
+
+    <div id="status"></div>
+    <a id="downloadLink" href="#">✅ Click here to download your ZIP</a>
+
+    <script>
+        const btn = document.getElementById('downloadBtn');
+        const input = document.getElementById('urlInput');
+        const statusDiv = document.getElementById('status');
+        const downloadLink = document.getElementById('downloadLink');
+
+        let poller = null;
+
+        btn.addEventListener('click', async () => {
+            const url = input.value.trim();
+            if (!url) {
+                alert('Please paste a playlist URL.');
+                return;
+            }
+
+            statusDiv.textContent = 'Starting job...';
+            downloadLink.style.display = 'none';
+            btn.disabled = true;
+            if (poller) clearInterval(poller);
+
+            try {
+                const res = await fetch('/api/download', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url })
+                });
+                if (!res.ok) throw new Error('Server rejected the request');
+                const { job_id } = await res.json();
+
+                poller = setInterval(async () => {
+                    const s = await fetch(`/api/status/${job_id}`);
+                    const data = await s.json();
+
+                    if (data.status === 'completed') {
+                        clearInterval(poller);
+                        statusDiv.textContent = '✅ Download complete!';
+                        downloadLink.href = `/api/download-file/${job_id}`;
+                        downloadLink.style.display = 'block';
+                        btn.disabled = false;
+                    } else if (data.status === 'failed') {
+                        clearInterval(poller);
+                        statusDiv.textContent = `❌ Failed: ${data.error || 'Unknown error'}`;
+                        btn.disabled = false;
+                    } else {
+                        statusDiv.textContent = `⏳ ${data.status}...`;
+                    }
+                }, 2000);
+
+            } catch (err) {
+                statusDiv.textContent = `❌ Error: ${err.message}`;
+                btn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
